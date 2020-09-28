@@ -8,7 +8,7 @@ type Config struct {
 	RemoteAddr string   `json:"remote_addr"`
 	RemotePort int      `json:"remote_port"`
 	Password   []string `json:"password"`
-	LogLevel   int8     `json:"log_level"`
+	LogLevel   int      `json:"log_level"`
 }
 
 // SSL 结构体
@@ -20,6 +20,7 @@ type SSL struct {
 	ReuseSession  bool     `json:"reuse_session"`
 	SessionTicket bool     `json:"session_ticket"`
 	Curves        string   `json:"curves"`
+	Sni           string   `json:"sni"`
 }
 
 // TCP 结构体

@@ -72,9 +72,9 @@ removeTrojan() {
 
     systemctl daemon-reload
 
-    #移除trojan的专用mysql
-    docker rm -f trojan-mysql
-    rm -rf /home/mysql >/dev/null 2>&1
+    #移除trojan的专用db
+    docker rm -f trojan-mysql trojan-mariadb >/dev/null 2>&1
+    rm -rf /home/mysql /home/mariadb >/dev/null 2>&1
     
     #移除环境变量
     sed -i '/trojan/d' ~/.${SHELL_WAY}rc
@@ -101,6 +101,9 @@ checkSys() {
         colorEcho $RED "Not support OS!"
         exit 1
     fi
+
+    # 缺失/usr/local/bin路径时自动添加
+    [[ -z `echo $PATH|grep /usr/local/bin` ]] && { echo 'export PATH=$PATH:/usr/local/bin' >> /etc/profile; source /etc/profile; }
 }
 
 #安装依赖
@@ -109,13 +112,39 @@ installDependent(){
         ${PACKAGE_MANAGER} install socat bash-completion -y
     else
         ${PACKAGE_MANAGER} update
-        ${PACKAGE_MANAGER} install socat bash-completion -y
+        ${PACKAGE_MANAGER} install socat bash-completion xz-utils -y
+    fi
+}
+
+setupCron() {
+    if [[ `crontab -l 2>/dev/null|grep acme` ]]; then
+        if [[ -z `crontab -l 2>/dev/null|grep trojan-web` || `crontab -l 2>/dev/null|grep trojan-web|grep "&"` ]]; then
+            #计算北京时间早上3点时VPS的实际时间
+            ORIGIN_TIME_ZONE=$(date -R|awk '{printf"%d",$6}')
+            LOCAL_TIME_ZONE=${ORIGIN_TIME_ZONE%00}
+            BEIJING_ZONE=8
+            BEIJING_UPDATE_TIME=3
+            DIFF_ZONE=$[$BEIJING_ZONE-$LOCAL_TIME_ZONE]
+            LOCAL_TIME=$[$BEIJING_UPDATE_TIME-$DIFF_ZONE]
+            if [ $LOCAL_TIME -lt 0 ];then
+                LOCAL_TIME=$[24+$LOCAL_TIME]
+            elif [ $LOCAL_TIME -ge 24 ];then
+                LOCAL_TIME=$[$LOCAL_TIME-24]
+            fi
+            crontab -l 2>/dev/null|sed '/acme.sh/d' > crontab.txt
+            echo "0 ${LOCAL_TIME}"' * * * systemctl stop trojan-web; "/root/.acme.sh"/acme.sh --cron --home "/root/.acme.sh" > /dev/null; systemctl start trojan-web' >> crontab.txt
+            crontab crontab.txt
+            rm -f crontab.txt
+        fi
     fi
 }
 
 installTrojan(){
     local SHOW_TIP=0
-    [[ $UPDATE == 1 ]] && systemctl stop trojan-web >/dev/null 2>&1
+    if [[ $UPDATE == 1 ]];then
+        systemctl stop trojan-web >/dev/null 2>&1
+        rm -f /usr/local/bin/trojan
+    fi
     LASTEST_VERSION=$(curl -H 'Cache-Control: no-cache' -s "$VERSION_CHECK" | grep 'tag_name' | cut -d\" -f4)
     echo "正在下载管理程序`colorEcho $BLUE $LASTEST_VERSION`版本..."
     curl -L "$DOWNLAOD_URL/$LASTEST_VERSION/trojan" -o /usr/local/bin/trojan
@@ -132,29 +161,20 @@ installTrojan(){
     if [[ $UPDATE == 0 ]];then
         colorEcho $GREEN "安装trojan管理程序成功!\n"
         echo -e "运行命令`colorEcho $BLUE trojan`可进行trojan管理\n"
-        trojan
+        /usr/local/bin/trojan
     else
+        if [[ `cat /usr/local/etc/trojan/config.json|grep -w "\"db\""` ]];then
+            sed -i "s/\"db\"/\"database\"/g" /usr/local/etc/trojan/config.json
+            systemctl restart trojan
+        fi
+        /usr/local/bin/trojan upgrade db
+        if [[ -z `cat /usr/local/etc/trojan/config.json|grep sni` ]];then
+            /usr/local/bin/trojan upgrade config
+        fi
+        systemctl restart trojan-web
         colorEcho $GREEN "更新trojan管理程序成功!\n"
     fi
-    systemctl restart trojan-web
-    if [[ -z `crontab -l 2>/dev/null|grep trojan-web` ]]; then
-        #计算北京时间早上3点时VPS的实际时间
-        ORIGIN_TIME_ZONE=$(date -R|awk '{printf"%d",$6}')
-        LOCAL_TIME_ZONE=${ORIGIN_TIME_ZONE%00}
-        BEIJING_ZONE=8
-        BEIJING_UPDATE_TIME=3
-        DIFF_ZONE=$[$BEIJING_ZONE-$LOCAL_TIME_ZONE]
-        LOCAL_TIME=$[$BEIJING_UPDATE_TIME-$DIFF_ZONE]
-        if [ $LOCAL_TIME -lt 0 ];then
-            LOCAL_TIME=$[24+$LOCAL_TIME]
-        elif [ $LOCAL_TIME -ge 24 ];then
-            LOCAL_TIME=$[$LOCAL_TIME-24]
-        fi
-        crontab -l 2>/dev/null|sed '/acme.sh/d' > crontab.txt
-        echo "0 ${LOCAL_TIME}"' * * * systemctl stop trojan-web && "/root/.acme.sh"/acme.sh --cron --home "/root/.acme.sh" > /dev/null && systemctl start trojan-web' >> crontab.txt
-        crontab crontab.txt
-        rm -f crontab.txt
-    fi
+    setupCron
     [[ $SHOW_TIP == 1 ]] && echo "浏览器访问'`colorEcho $BLUE https://域名`'可在线trojan多用户管理"
 }
 

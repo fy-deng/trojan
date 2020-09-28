@@ -1,6 +1,7 @@
 package trojan
 
 import (
+	"encoding/base64"
 	"fmt"
 	"strconv"
 	"trojan/core"
@@ -32,13 +33,18 @@ func AddUser() {
 		fmt.Println(util.Yellow("不能新建用户名为'admin'的用户!"))
 		return
 	}
-	if _, err := core.GetValue(inputUser + "_pass"); err == nil {
+	mysql := core.GetMysql()
+	if user := mysql.GetUserByName(inputUser); user != nil {
 		fmt.Println(util.Yellow("已存在用户名为: " + inputUser + " 的用户!"))
 		return
 	}
 	inputPass := util.Input(fmt.Sprintf("生成随机密码: %s, 使用直接回车, 否则输入自定义密码: ", randomPass), randomPass)
-	mysql := core.GetMysql()
-	if mysql.CreateUser(inputUser, inputPass) == nil {
+	base64Pass := base64.StdEncoding.EncodeToString([]byte(inputPass))
+	if user := mysql.GetUserByPass(base64Pass); user != nil {
+		fmt.Println(util.Yellow("已存在密码为: " + inputPass + " 的用户!"))
+		return
+	}
+	if mysql.CreateUser(inputUser, base64Pass, inputPass) == nil {
 		fmt.Println("新增用户成功!")
 	}
 }
@@ -48,6 +54,9 @@ func DelUser() {
 	userList := UserList()
 	mysql := core.GetMysql()
 	choice := util.LoopInput("请选择要删除的用户序号: ", userList, true)
+	if choice == -1 {
+		return
+	}
 	if mysql.DeleteUser(userList[choice-1].ID) == nil {
 		fmt.Println("删除用户成功!")
 	}
@@ -84,6 +93,9 @@ func CleanData() {
 	userList := UserList()
 	mysql := core.GetMysql()
 	choice := util.LoopInput("请选择要清空流量的用户序号: ", userList, true)
+	if choice == -1 {
+		return
+	}
 	if mysql.CleanData(userList[choice-1].ID) == nil {
 		fmt.Println("清空流量成功!")
 	}
@@ -92,19 +104,20 @@ func CleanData() {
 // UserList 获取用户列表并打印显示
 func UserList(ids ...string) []*core.User {
 	mysql := core.GetMysql()
-	userList := mysql.GetData(ids...)
-	if userList == nil {
-		fmt.Println("连接mysql失败!")
+	userList, err := mysql.GetData(ids...)
+	if err != nil {
+		fmt.Println(err.Error())
 		return nil
 	}
-	domain, err := core.GetValue("domain")
-	if err != nil {
-		domain = ""
-	}
+	domain, port := GetDomainAndPort()
 	for i, k := range userList {
+		pass, err := base64.StdEncoding.DecodeString(k.Password)
+		if err != nil {
+			pass = []byte("")
+		}
 		fmt.Printf("%d.\n", i+1)
 		fmt.Println("用户名: " + k.Username)
-		fmt.Println("密码: " + k.Password)
+		fmt.Println("密码: " + string(pass))
 		fmt.Println("上传流量: " + util.Cyan(util.Bytefmt(k.Upload)))
 		fmt.Println("下载流量: " + util.Cyan(util.Bytefmt(k.Download)))
 		if k.Quota < 0 {
@@ -112,7 +125,7 @@ func UserList(ids ...string) []*core.User {
 		} else {
 			fmt.Println("流量限额: " + util.Cyan(util.Bytefmt(uint64(k.Quota))))
 		}
-		fmt.Println("分享链接: " + util.Green(fmt.Sprintf("trojan://%s@%s:443", k.Password, domain)))
+		fmt.Println("分享链接: " + util.Green(fmt.Sprintf("trojan://%s@%s:%d", string(pass), domain, port)))
 		fmt.Println()
 	}
 	return userList

@@ -74,26 +74,40 @@ func GetMysql() *Mysql {
 	return &config.Mysql
 }
 
-// WriterMysql 写mysql配置
-func WriterMysql(mysql *Mysql) bool {
+// WriteMysql 写mysql配置
+func WriteMysql(mysql *Mysql) bool {
 	mysql.Enabled = true
-	mysql.Database = "trojan"
 	config := Load("")
 	config.Mysql = *mysql
 	return Save(config, "")
 }
 
-// WriterTls 写tls配置
-func WriterTls(cert string, key string) bool {
+// WriteTls 写tls配置
+func WriteTls(cert, key, domain string) bool {
 	config := Load("")
 	config.SSl.Cert = cert
 	config.SSl.Key = key
+	config.SSl.Sni = domain
 	return Save(config, "")
 }
 
-// WriterPassword 写密码
-func WriterPassword(pass []string) bool {
+// WriteDomain 写域名
+func WriteDomain(domain string) bool {
+	config := Load("")
+	config.SSl.Sni = domain
+	return Save(config, "")
+}
+
+// WritePassword 写密码
+func WritePassword(pass []string) bool {
 	config := Load("")
 	config.Password = pass
+	return Save(config, "")
+}
+
+// WriteLogLevel 写日志等级
+func WriteLogLevel(level int) bool {
+	config := Load("")
+	config.LogLevel = level
 	return Save(config, "")
 }

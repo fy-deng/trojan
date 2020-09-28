@@ -15,6 +15,8 @@ trojan多用户管理部署程序
 - 命令行模式管理, 支持命令补全
 - 集成acme.sh证书申请
 - 生成客户端配置文件
+- 在线实时查看trojan日志
+- 在线trojan和trojan-go随时切换
 - 支持trojan://分享链接和二维码分享(二维码仅限web页面)
 
 ## 安装方式
@@ -34,9 +36,11 @@ source <(curl -sL https://git.io/trojan-install) --remove
 前端页面源码地址: [trojan-web](https://github.com/Jrohy/trojan-web)
 
 ### b. docker运行
-1. 安装mysql
+1. 安装mysql  
+
+因为mariadb内存使用比mysql至少减少一半, 所以推荐使用mariadb数据库
 ```
-docker run --name trojan-mysql --restart=always -p 3306:3306 -v /home/mysql:/var/lib/mysql -e MYSQL_ROOT_PASSWORD=trojan -e MYSQL_ROOT_HOST=% -e MYSQL_DATABASE=trojan -d mysql/mysql-server:5.7
+docker run --name trojan-mariadb --restart=always -p 3306:3306 -v /home/mariadb:/var/lib/mysql -e MYSQL_ROOT_PASSWORD=trojan -e MYSQL_ROOT_HOST=% -e MYSQL_DATABASE=trojan -d mariadb:10.2
 ```
 端口和root密码以及持久化目录都可以改成其他的
 
@@ -68,12 +72,14 @@ Available Commands:
   del         删除用户
   help        Help about any command
   info        用户信息列表
+  log         查看trojan日志
   restart     重启trojan
   start       启动trojan
   status      查看trojan状态
   stop        停止trojan
   tls         证书安装
   update      更新trojan
+  updateWeb   更新trojan管理程序
   version     显示版本号
   web         以web方式启动
 
